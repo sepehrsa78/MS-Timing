@@ -1,8 +1,9 @@
 # Over-Reliance on Prior Expectations in Relapsing-Remitting MS — modelling & figures
-@Written by Sepehr Sima
 
 Code and data for the Bayesian-observer modelling of the time-reproduction
 task and for the paper figures that depend on the model fits.
+
+@Written by Sepehr Sima
 
 ## What this project does
 
