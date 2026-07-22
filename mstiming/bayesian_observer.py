@@ -25,7 +25,7 @@ Notes
 * ``fitType`` selects the estimator used in stage 2: ``'BLS'`` (used in the
   paper), ``'MLE'`` or ``'MAP'``.
 * In the paper the three parameters are (w_m, w_r, alpha).  Internally the
-  second parameter is called ``w_p`` (production noise) for historical reasons;
+  second parameter is called ``w_p`` (production noise);
   it is identical to the paper's w_r.
 """
 

@@ -1,8 +1,11 @@
-"""Figure helpers shared by the per-figure notebooks.
+"""Figure helpers shared by the per-figure notebooks and the diagnostic plots.
+
+``publication_style`` / ``fmt_p`` / ``sig_bar`` / ``box_swarm`` back the paper
+panels (Figures 2-4); ``setup_style`` / ``model_over_data`` back the per-subject
+model-over-data diagnostics produced by ``run_fits/plot_single_subject_fits.py``.
 """
 
-import warnings
-
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -10,6 +13,64 @@ import seaborn as sns
 from . import config
 
 
+# --- publication style (Figures 2-4) ---------------------------------------
+def publication_style():
+    """Apply the manuscript's figure style; return the font family used.
+
+    Uses the manuscript font (Gill Sans) when it is installed, otherwise falls
+    back to matplotlib's default so the figures still render everywhere.
+    """
+    installed = {f.name for f in fm.fontManager.ttflist}
+    font = "Gill Sans" if "Gill Sans" in installed else "DejaVu Sans"
+    plt.rcParams.update({
+        "font.family": font, "font.weight": "semibold",
+        "axes.labelweight": "semibold", "axes.titleweight": "semibold",
+    })
+    sns.set_context("talk")
+    sns.set_style("white", {"xtick.bottom": True, "ytick.left": True})
+    return font
+
+
+def fmt_p(p, adj=False):
+    """Format a p-value the way the manuscript labels its significance bars."""
+    lead = "p-adj" if adj else "p"
+    if p < 0.05:
+        if round(p, 3) < 0.001:
+            return rf"{lead} $<$ 0.001$^{{*}}$"
+        return rf"{lead} = {p:.3f}$^{{*}}$"
+    return rf"{lead} = {p:.2f}"
+
+
+def sig_bar(ax, x1, x2, y, p, adj=False, fontsize=30, lw=3, tick_frac=0.02, color="black"):
+    """Draw a significance bracket from ``x1`` to ``x2`` at height ``y``.
+
+    The bracket ticks point downward and the label is ``fmt_p(p, adj)``.
+    """
+    y0, y1 = ax.get_ylim()
+    tick = tick_frac * (y1 - y0)
+    ax.plot([x1, x1, x2, x2], [y - tick, y, y, y - tick],
+            lw=lw, color=color, clip_on=False, solid_capstyle="butt")
+    ax.text((x1 + x2) / 2, y, fmt_p(p, adj), ha="center", va="bottom",
+            fontsize=fontsize, fontweight="semibold")
+
+
+def box_swarm(ax, df, value, palette=None, group_col="Group", order=("Control", "MS"),
+              size=6, alpha=0.5):
+    """Unfilled box plot overlaid on a per-subject swarm, coloured by group.
+
+    This is the panel style shared by Figure 2C/D and Figure 3A/B/C.
+    """
+    palette = palette or config.PUB_COLORS
+    order = list(order)
+    sns.swarmplot(data=df, x=group_col, y=value, order=order, hue=group_col,
+                  palette=palette, size=size, alpha=alpha, legend=False, ax=ax)
+    sns.boxplot(data=df, x=group_col, y=value, order=order, hue=group_col,
+                palette=palette, width=0.5, linewidth=2, fliersize=0,
+                legend=False, fill=False, ax=ax)
+    return ax
+
+
+# --- per-subject diagnostic (run_fits/plot_single_subject_fits.py) ----------
 def setup_style():
     sns.set_theme(style="ticks")
     plt.rcParams.update({
@@ -21,57 +82,11 @@ def setup_style():
     })
 
 
-def _pval_stars(p):
-    return "***" if p < 1e-3 else "**" if p < 1e-2 else "*" if p < 5e-2 else "ns"
-
-
-def sig_bracket(ax, x1, x2, y, text, lw=1.5, tick=None):
-    """Draw a significance bracket from x1 to x2 at height y with a label."""
-    tick = (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.02 if tick is None else tick
-    ax.plot([x1, x1, x2, x2], [y, y + tick, y + tick, y], lw=lw, c="black")
-    ax.text((x1 + x2) / 2, y + tick, text, ha="center", va="bottom")
-
-
-def beeswarm_mean(ax, df, value, group_col="group", order=("Control", "MS"),
-                  ylabel="", ylim=None, yticks=None, pval=None, dot_size=4.5):
-    """Beeswarm of ``value`` per group with a horizontal mean bar per group.
-
-    Uses a true swarm layout (points nudged sideways to avoid overlap, forming
-    the branch-like structure of the published figures).  A single significance
-    bracket with the p-value is drawn if ``pval`` is given.
-    """
-    order = list(order)
-    palette = {g: config.COLORS[g]["dot"] for g in order}
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # swarm overlap notice with many points
-        sns.swarmplot(data=df, x=group_col, y=value, order=order, hue=group_col,
-                      palette=palette, size=dot_size, alpha=0.9, edgecolor="none",
-                      legend=False, ax=ax)
-    for i, g in enumerate(order):
-        m = df.loc[df[group_col] == g, value].mean()
-        ax.plot([i - 0.34, i + 0.34], [m, m], lw=7, solid_capstyle="butt",
-                color=config.COLORS[g]["bar"], zorder=5)
-    ax.set_xlabel("")
-    ax.set_ylabel(ylabel)
-    if ylim is None:
-        # leave head-room for the bracket when the axis is auto-scaled
-        ylim = (df[value].min() * 0.9, df[value].max() * 1.18)
-    ax.set_ylim(ylim)
-    if yticks is not None:
-        ax.set_yticks(yticks)
-    if pval is not None:
-        y0, y1 = ax.get_ylim()
-        txt = f"p = {pval:.3f}" + ("*" if pval < 0.05 else "")
-        sig_bracket(ax, 0, 1, y1 - (y1 - y0) * 0.10, txt, tick=(y1 - y0) * 0.02)
-    sns.despine(ax=ax)
-    return ax
-
-
 def model_over_data(ax, group, intervals, mu_data, sd_data, mu_model, sd_model,
                     slope, intercept, xylim=(0.3, 2.0), ticks=(0.4, 0.7, 1.1, 1.9)):
-    """Fig 2A/B: reproduced vs presented interval, data + grey model simulation.
+    """Reproduced vs presented interval: data markers + grey model simulation.
 
-    ``slope``/``intercept`` draw the group's mean regression line; the dashed
+    ``slope``/``intercept`` draw the subject's regression line; the dashed
     diagonal is the identity line (perfect reproduction).
     """
     col = config.COLORS[group]["line"]
@@ -91,33 +106,5 @@ def model_over_data(ax, group, intervals, mu_data, sd_data, mu_model, sd_model,
     ax.set_xlabel("Intervals (sec)")
     ax.set_ylabel("Reproduction (sec)")
     ax.legend(loc="upper left", frameon=False, fontsize=9)
-    sns.despine(ax=ax)
-    return ax
-
-
-def group_bars(ax, df, value, order, colors, ylabel="", ylim=None, yticks=None,
-               brackets=None):
-    """Fig 4: mean +/- SEM bars for age subgroups with optional sig brackets.
-
-    ``brackets`` is a list of (i, j, text) tuples referencing bar positions.
-    """
-    means = [df.loc[df["subgroup"] == g, value].mean() for g in order]
-    sems = [df.loc[df["subgroup"] == g, value].sem() for g in order]
-    x = np.arange(len(order))
-    ax.bar(x, means, yerr=sems, color=[colors[g] for g in order],
-           edgecolor="black", linewidth=1.5, capsize=4, width=0.7)
-    ax.set_xticks(x)
-    ax.set_xticklabels([g.replace(" ", "\n") for g in order])
-    ax.set_ylabel(ylabel)
-    if ylim is not None:
-        ax.set_ylim(ylim)
-    if yticks is not None:
-        ax.set_yticks(yticks)
-    if brackets:
-        top = max(m + s for m, s in zip(means, sems))
-        step = top * 0.12
-        for k, (i, j, text) in enumerate(brackets):
-            sig_bracket(ax, i, j, top + step * (k + 1), text)
-        ax.set_ylim(top=top + step * (len(brackets) + 1.5))
     sns.despine(ax=ax)
     return ax

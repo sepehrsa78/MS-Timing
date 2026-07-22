@@ -21,12 +21,15 @@ def load_trials(path=None):
 def load_cohort(path=None):
     """Return the analysed cohort as a DataFrame with columns ``ID``, ``group``.
 
-    ``group`` uses display labels ('Control', 'MS').
+    ``group`` uses display labels ('Control', 'MS'); ``group_code`` keeps the raw
+    label ('CN', 'MS').  ``Age`` (years) is carried through when present -- it is
+    needed for the age-subgroup analysis in Figure 4.
     """
     path = path or config.COHORT_CSV
     cohort = pd.read_csv(path).rename(columns={"SubjectID": "ID", "Group": "group_code"})
     cohort["group"] = cohort["group_code"].map(config.GROUP_LABEL)
-    return cohort[["ID", "group_code", "group"]]
+    cols = ["ID", "group_code", "group"] + (["Age"] if "Age" in cohort.columns else [])
+    return cohort[cols]
 
 
 def iqr_filter(df, col="RT", k=1.5):
@@ -52,12 +55,6 @@ def group_pooled_trials(trials, cohort, group_code, apply_filter=True):
     ids = cohort.loc[cohort["group_code"] == group_code, "ID"]
     tt = trials[trials["ID"].isin(ids)]
     return iqr_filter(tt) if apply_filter else tt
-
-
-def group_means(trials, value="RT", by="timeInterval"):
-    """Per-interval mean and SD of ``value`` (used for the data markers)."""
-    g = trials.groupby(by)[value]
-    return g.mean(), g.std()
 
 
 def merge_params_with_cohort(params, cohort):

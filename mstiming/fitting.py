@@ -6,7 +6,6 @@ functions, so the modelling logic lives in exactly one place.
 
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 from scipy.optimize import minimize
 
 from . import config
@@ -66,16 +65,35 @@ def multistart_fit(trials, inits):
     return pd.DataFrame(rows)
 
 
-def linear_metrics(trials):
-    """Per-subject OLS regression of reproduced (RT) on presented interval.
+def per_interval_stats(trials, intervals=None):
+    """Per-interval mean and (population) SD of the reproduced time.
 
-    Returns (slope, intercept).  Slope < 1 indicates central-tendency bias;
-    the reliability exclusion in the paper drops subjects with slope <= 0.
+    Returns ``(intervals, mu, sd)`` aligned to ``intervals`` (defaults to
+    ``config.INTERVALS``).  ``mu``/``sd`` are the per-interval mean and the
+    ``ddof=0`` standard deviation of ``RT`` -- the ``cdfMu``/``cdfSig`` markers
+    plotted in Figure 2 and used to summarise each subject's behaviour.
+    Intervals with no trials come back as NaN.
     """
-    X = sm.add_constant(trials["timeInterval"].to_numpy(float))
-    y = trials["RT"].to_numpy(float)
-    b = sm.OLS(y, X).fit().params
-    return float(b[1]), float(b[0])
+    intervals = np.asarray(config.INTERVALS if intervals is None else intervals, float)
+    g = trials.groupby("timeInterval")["RT"]
+    mu = g.mean().reindex(intervals).to_numpy(float)
+    sd = g.std(ddof=0).reindex(intervals).to_numpy(float)
+    return intervals, mu, sd
+
+
+def interval_regression(intervals, mu):
+    """Ordinary least-squares fit of the per-interval means on the intervals.
+
+    Returns ``(slope, intercept)``.  Unlike a regression over the raw trials,
+    every interval is weighted equally (one point per interval), which is the
+    behavioural slope/intercept reported in the paper.  NaN intervals (no
+    trials) are dropped.  Slope < 1 indicates central-tendency bias.
+    """
+    x = np.asarray(intervals, float)
+    y = np.asarray(mu, float)
+    m = np.isfinite(x) & np.isfinite(y)
+    slope, intercept = np.polyfit(x[m], y[m], 1)
+    return float(slope), float(intercept)
 
 
 def simulate(trials, params, sim_num=None, seed=None):
